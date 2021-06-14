@@ -2,5 +2,4 @@
 title: "Welcome"
 output: html_document
 ---
-
-Hello R studio
+Hello everyone
