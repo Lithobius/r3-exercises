@@ -94,6 +94,8 @@ sst_gd
 
 Now plotting
 the griddap object has lots of lists etc in it
+
+Also, getting the coast, an option is in the ecodata package. should check if its only eastern/us though
 ```{r}
 shelf(
   dplyr,
