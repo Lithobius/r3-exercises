@@ -1,0 +1,189 @@
+---
+title: "manipulate"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(DT)
+```
+
+First we're going to read in the California current data from the ERDDAP server
+https://oceanview.pfeg.noaa.gov/erddap/index.html
+could use ERDDAP to filter and select but we're going to use the most basic version so that we can filter it ourselves.
+
+## Read online table, download to (`*.csv`)
+
+```{r}
+# set variables
+csv_url  <- "https://oceanview.pfeg.noaa.gov/erddap/tabledap/cciea_AC.csv"
+dir_data <- "data"
+
+# derived variables
+csv <- file.path(dir_data, basename(csv_url))
+
+# create directory
+#only need to do once
+#dir.create(dir_data)
+
+# download file
+if (!file.exists(csv))
+  download.file(csv_url, csv)
+```
+### Read table
+```{r}
+# attempt to read csv
+d <- read.csv(csv)
+
+# show the data frame
+d
+
+
+# read csv by skipping first two lines, so no header
+d <- read.csv(csv, skip = 2, header = FALSE)
+d
+
+#tibble::tibble(d)
+#glimpse(d)
+
+# update data frame to original column names from the file
+#this is necessary because you skipped two lines which included header
+names(d) <- names(read.csv(csv))
+d
+```
+## show table `DT::datatable()`
+
+This makes the table interactive in the knit html, and displays better than any of the previous view options.
+
+
+```{r}
+#show table
+DT::datatable(d)
+
+#or
+
+library(DT)
+datatable(d)
+```
+
+## Wrangle data
+
+### Manipulate with `dplyr`
+
+To do:
+convert df to tibble
+transform time column to as.Date()
+select specific columns
+filter by row values
+
+We only want to see information relating to revenues in a specific year
+
+```{r}
+library(DT)
+library(dplyr)
+
+d <- d %>% 
+  # tibble
+  tibble() %>% 
+  # mutate time
+  mutate(
+    time = as.Date(substr(time, 1, 10))) %>% 
+  # select columns
+  select(
+    time, 
+    starts_with("total_fisheries_revenue")) %>% 
+  # filter rows
+  filter(
+    time >= as.Date("1981-01-01"))
+
+datatable(d)
+```
+
+### Tidy with `tidyr`
+
+Here we're getting long data for summaries in future sections.
+
+```{r}
+library(tidyr)
+
+d <- d %>% 
+  pivot_longer(-time)
+
+datatable(d)
+```
+
+### Summarize with `dplyr`
+
+our pipe will also use stringr to adjust row values to only contain state codes
+
+```{r}
+library(stringr)
+
+#state codes only
+d <- d %>% 
+  mutate(
+    region = str_replace(name, "total_fisheries_revenue_", "")) %>% 
+  select(time, region, value)
+datatable(d)
+
+
+#make a datatable to summarize the average revenue across the coast and by state
+d_sum <- d %>% 
+  group_by(region) %>% 
+  summarize(
+    avg_revenue = mean(value))
+datatable(d_sum) %>% 
+  formatCurrency("avg_revenue")
+
+```
+
+## Apply functions with `purrr` on a `nest`ed `tibble`
+
+Here we're taking advantage of the fact that tibbles can nest to create a tibble that has data grouped by region
+
+```{r}
+#group by region
+n <- d %>% 
+  group_by(region) %>% 
+  nest(
+    data = c(time, value))
+n
+
+#run a linear model on each tibble nested in the tibble
+n <- n %>% 
+  mutate(
+    lm    = map(data, function(d){
+      lm(value ~ time, d) } ),
+    trend = map_dbl(lm, function(m){
+      coef(summary(m))["time","Estimate"] }))
+n
+
+#now redefine the tibble to jsut be the results of the linear model
+n %>% 
+  select(region, trend) %>% 
+  datatable()
+```
+
+## rmarkdown notes
+
+If you’d like to render your Rmarkdown into HTML with a table of contents (toc), showing up to 3rd level headings (i.e. ### Heading; use toc_depth: 3) and have a floating menu (toc_float), along with the ability to Show (or Hide) your Code Chunks (code_folding), then replace this default front matter yaml:
+
+output: html_document
+with:
+
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: "show"
+For details, see 3.1 HTML document | R Markdown: The Definitive Guide. : https://bookdown.org/yihui/rmarkdown/html-document.html
+
+
+
+## Further learning objectives...
+
+try some stuff on the list here; https://noaa-iea.github.io/r3-train/manipulate.html#Further_Learning_Objectives
+

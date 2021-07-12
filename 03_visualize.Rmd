@@ -1,0 +1,253 @@
+---
+title: "visualize"
+output: html_document
+---
+
+Learning objectives; use of here(), ggplot2 (grammar of graphics), interactive online plots using htmlwidgets
+
+## Read in data
+
+this time we will read directly from csv either from erdap server or the csv we downloaded
+
+note, read_csv vs read.csv ; read_csv() does not automatically convert characters to factors and defaults to tibbles instead of dataframes.
+
+```{r}
+# libraries
+library(here)
+library(readr)
+library(DT)
+
+# variables
+url_ac <- "https://oceanview.pfeg.noaa.gov/erddap/tabledap/cciea_AC.csv"
+# if ERDDAP server down (Error in download.file) with URL above, use this:
+#    url_ac <- "https://raw.githubusercontent.com/noaa-iea/r3-train/master/data/cciea_AC.csv"
+csv_ac <- here("data/cciea_AC.csv")
+
+# download data
+if (!file.exists(csv_ac))
+  download.file(url_ac, csv_ac)
+
+# read data
+d_ac        <- read_csv(csv_ac, col_names = F, skip = 2)
+names(d_ac) <- names(read_csv(csv_ac))
+
+# show data
+datatable(d_ac)
+```
+## Visualize
+
+### line plot
+
+First must format with dplyr. then specify in aesthetics and add geometry.
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# subset data
+d_coast <- d_ac %>% 
+  # select columns
+  select(time, total_fisheries_revenue_coastwide) %>% 
+  # filter rows
+  filter(!is.na(total_fisheries_revenue_coastwide))
+datatable(d_coast)
+
+# ggplot object
+p_coast <- d_coast %>% 
+  # setup aesthetics
+  ggplot(aes(x = time, y = total_fisheries_revenue_coastwide)) +
+  # add geometry
+  geom_line()
+
+# show plot
+p_coast
+
+#add trend line
+
+p_coast + 
+  geom_smooth(method = "lm")
+
+```
+
+### histogram
+
+adjust binwidth as needed
+
+```{r}
+d_coast %>% 
+  # setup aesthetics
+  ggplot(aes(x = total_fisheries_revenue_coastwide)) +
+  # add geometry
+  geom_histogram(binwidth = 10)
+```
+
+### series line plot 
+
+color is region here. We need to tidy data into long format as in the manipulate lesson.
+
+
+```{r}
+library(stringr)
+library(tidyr)
+
+## this is the stuff from last time
+
+d_rgn <- d_ac %>% 
+  # select columns
+  select(
+    time, 
+    starts_with("total_fisheries_revenue")) %>% 
+  # exclude column
+  select(-total_fisheries_revenue_coastwide) %>% 
+  # pivot longer
+  pivot_longer(-time) %>% 
+  # mutate region by stripping other
+  mutate(
+    region = name %>% 
+      str_replace("total_fisheries_revenue_", "") %>% 
+      str_to_upper()) %>% 
+  # filter for not NA
+  filter(!is.na(value)) %>% 
+  # select columns
+  select(time, region, value)
+
+## this is the plot
+  
+# create plot object
+p_rgn <- ggplot(
+  d_rgn,
+  # aesthetics
+  aes(
+    x     = time, 
+    y     = value,
+    group = region,
+    color = region)) +
+  # geometry
+  geom_line()
+
+# show plot
+p_rgn
+
+#updating the labels
+p_rgn <- p_rgn +
+  labs(
+    title  = "Fisheries Revenue",
+    x      = "Year",
+    y      = "Millions $ (year 2015)",
+    color  = "Region")
+p_rgn
+
+```
+### facet wrap for multiple plots
+
+Instead of putting all the lines on top of each other here we have them in separate plots by region. not an optimal example for actual usage but works for illustrating the point.
+```{r}
+p_rgn +
+  facet_wrap(vars(region))
+```
+### Bar plot
+
+geom_bar() and geom_col() are different; bar only uses a discrete x but col uses a discrete x and continuous y
+
+Here we are using geom_col to compare each region's revenue for a single year.
+
+Note the use of glue to make the code reusable for multiple years or in future years. The object yr_max is pasted into a string instead of being written out each time.
+
+```{r}
+library(glue)
+library(lubridate)
+
+yr_max <- year(max(d_rgn$time))
+
+d_rgn %>% 
+  # filter by most recent time
+  filter(year(time) == yr_max) %>% 
+  # setup aesthetics
+  ggplot(aes(x = region, y = value, fill = region)) +
+  # add geometry
+  geom_col() +
+  # add labels
+  labs(
+    title  = glue("Fisheries Revenue for {yr_max}"),
+    x      = "Region",
+    y      = "Millions $ (year 2015)",
+    fill   = "Region")
+```
+### variation of a series, boxplot
+
+```{r}
+d_rgn %>% 
+  # setup aesthetics
+  ggplot(aes(x = region, y = value, fill = region)) +
+  # add geometry
+  geom_boxplot() +
+  # add labels
+  labs(
+    title  = "Fisheries Revenue Variability",
+    x      = "Region",
+    y      = "Millions $ (year 2015)") +
+  # drop legend since redundant with x axis
+  theme(
+    legend.position = "none")
+```
+### Variation of a series, violin
+
+```{r}
+p_rgn_violin <- d_rgn %>% 
+  # setup aesthetics
+  ggplot(aes(x = region, y = value, fill = region)) +
+  # add geometry
+  geom_violin() +
+  # add labels
+  labs(
+    title  = "Fisheries Revenue Variability",
+    x      = "Region",
+    y      = "Millions $ (year 2015)") +
+  # drop legend since redundant with x axis
+  theme(
+    legend.position = "none")
+p_rgn_violin
+```
+## Change theme
+
+```{r}
+p_rgn_violin +
+  theme_classic()
+```
+
+## Interactive plots with plotly or dygraphs
+
+### plotly
+
+One advantage here is that you can use your cursor on the plot to see any given datapoint, turn on and off items in the legend, download a png of the adjusted plot, etc.
+
+Not as reproducible for final figures of course but good for what it is.
+
+```{r}
+plotly::ggplotly(p_rgn)
+```
+
+### interactive time series with dygraphs
+
+Here you use wide data to make the plot, and you can scroll along the time series.
+
+```{r}
+library(dygraphs)
+
+#first make wide data
+
+d_rgn_wide <- d_rgn %>% 
+  mutate(
+    Year = year(time)) %>% 
+  select(Year, region, value) %>% 
+  pivot_wider(
+    names_from  = region,
+    values_from = value)
+datatable(d_rgn_wide)
+
+
+d_rgn_wide %>% 
+  dygraph() %>% 
+  dyRangeSelector()
+```
+
+
