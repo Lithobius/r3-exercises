@@ -38,3 +38,4 @@ vignettes/*.pdf
 # R Environment Variables
 .Renviron
 data/sst_gd.rds
+.DS_Store
