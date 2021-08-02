@@ -1,0 +1,14 @@
+---
+title: "infographics"
+output: html_document
+---
+
+```{r}
+#remotes::install_github("marinebon/infographiqR")
+library(infographiqR)
+```
+
+```{r}
+
+```
+
